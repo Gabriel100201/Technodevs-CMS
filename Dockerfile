@@ -1,41 +1,29 @@
-# Base más reciente compatible con Go 1.23
+# Usar una imagen base con Go
 FROM golang:1.23 AS builder
 
-# Instalar Node.js
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get clean
-
-# Configurar el directorio de trabajo
+# Crear el directorio de trabajo en el contenedor
 WORKDIR /app
 
-# Copiar todo el proyecto al contenedor
+# Copiar los archivos necesarios al contenedor
 COPY . .
 
-# 1. Construir la interfaz (UI)
-WORKDIR /app/ui
-RUN npm install && npm run build
-
-# 2. Construir el ejecutable base.exe para Linux
+# Entrar a la carpeta donde se encuentra el archivo main.go
 WORKDIR /app/examples/base
-ENV GOOS=linux
-ENV GOARCH=amd64
-RUN go build -o base.exe main.go
 
-# 3. Crear una imagen más liviana con Alpine para la ejecución
-FROM alpine:latest
+# Compilar la aplicación con Go
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build
 
-# Instalar dependencias necesarias
-RUN apk add --no-cache libc6-compat
+# Crear una etapa final para la imagen más ligera
+FROM debian:bullseye-slim
 
-# Copiar el ejecutable y los archivos necesarios desde la fase de construcción
+# Crear el directorio para la aplicación
 WORKDIR /app
-COPY --from=builder /app/examples/base/base.exe /app/base.exe
-COPY --from=builder /app/examples/base/pb_data /app/pb_data
 
-# Exponer el puerto del servidor
-EXPOSE 3000
+# Copiar el binario desde la etapa de compilación
+COPY --from=builder /app/examples/base/base.exe ./
 
-# Ejecutar el servidor
-CMD ["./base.exe", "serve", "--http=0.0.0.0:8090"]
+# Exponer el puerto de la aplicación
+EXPOSE 8090
+
+# Comando para ejecutar la aplicación
+CMD ["./base.exe", "serve"]
